@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MakanShare Prototype</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f5eefb; margin:0; padding:0; color:#333;}
+  header { background: linear-gradient(90deg, #d78de0, #f6a5e3); padding: 15px; color: white; text-align:center; font-size:1.5em;}
+  .container { padding: 20px; }
+  input, select, button { padding:8px; margin:5px 0; width:100%; border-radius:5px; border:1px solid #ccc; }
+  button { background: linear-gradient(90deg, #d78de0, #f6a5e3); color:white; border:none; cursor:pointer; }
+  button:hover { opacity:0.9; }
+  .section { margin-bottom:20px; padding:10px; background:#fff; border-radius:10px; box-shadow:0 0 5px rgba(0,0,0,0.1); }
+  .summary { background:#e0c7f2; padding:10px; border-radius:8px; }
+</style>
+</head>
+<body>
+<header>MakanShare 🍽️</header>
+<div class="container">
+
+<div id="loginSection" class="section">
+  <h3>Login Admin (PIN 6 digit)</h3>
+  <input type="password" id="adminPIN" placeholder="Masukkan PIN">
+  <button onclick="login()">MASUK</button>
+</div>
+
+<div id="dashboard" class="section" style="display:none;">
+  <h3>Dashboard</h3>
+  <button onclick="showCreateBill()">➕ Buat Tagihan Baru</button>
+  <div id="createBillSection" style="display:none; margin-top:15px;"></div>
+  <div id="billSummary" style="display:none; margin-top:15px;"></div>
+</div>
+
+<script>
+let adminPIN = '123456';
+let bill = { members: [], items: [], service:10, sst:6, rounding:0, cashier:'Anne', treasurer:'', total:0 };
+
+function login(){
+  let pin = document.getElementById('adminPIN').value;
+  if(pin === adminPIN){
+    document.getElementById('loginSection').style.display='none';
+    document.getElementById('dashboard').style.display='block';
+  } else { alert('PIN salah!'); }
+}
+
+function showCreateBill(){
+  let html = `
+    <h4>Informasi Tagihan</h4>
+    <input type='text' id='restaurant' placeholder='Nama Restoran'>
+    <label>Service Charge %</label>
+    <input type='number' id='service' value='10'>
+    <label>SST %</label>
+    <input type='number' id='sst' value='6'>
+    <label>Pembulatan</label>
+    <select id='rounding'>
+      <option value='0'>Tidak dibulatkan</option>
+      <option value='0.5'>Bulat ke 0.50</option>
+      <option value='1'>Bulat ke 1</option>
+    </select>
+    <label>Bendahara</label>
+    <input type='text' id='treasurer' placeholder='Nama Bendahara'>
+    <h4>Anggota</h4>
+    <input type='text' id='newMember' placeholder='Nama anggota'>
+    <button onclick='addMember()'>Tambah Anggota</button>
+    <ul id='memberList'></ul>
+    <h4>Tambah Item</h4>
+    <input type='text' id='itemName' placeholder='Nama Item'>
+    <input type='number' id='itemPrice' placeholder='Harga RM'>
+    <select id='itemShare' multiple></select>
+    <button onclick='addItem()'>Tambah Item</button>
+    <button onclick='showSummary()'>Lihat Ringkasan</button>
+  `;
+  document.getElementById('createBillSection').innerHTML = html;
+  document.getElementById('createBillSection').style.display='block';
+}
+
+function addMember(){
+  let name = document.getElementById('newMember').value;
+  if(name && !bill.members.includes(name)){
+    bill.members.push(name);
+    updateMemberList();
+    updateItemShareOptions();
+    document.getElementById('newMember').value='';
+  }
+}
+
+function updateMemberList(){
+  let ul = document.getElementById('memberList');
+  ul.innerHTML='';
+  bill.members.forEach(m => { ul.innerHTML += `<li>${m}</li>` });
+}
+
+function updateItemShareOptions(){
+  let select = document.getElementById('itemShare');
+  select.innerHTML='';
+  bill.members.forEach(m => { select.innerHTML += `<option value='${m}'>${m}</option>` });
+}
+
+function addItem(){
+  let name = document.getElementById('itemName').value;
+  let price = parseFloat(document.getElementById('itemPrice').value);
+  let share = Array.from(document.getElementById('itemShare').selectedOptions).map(o=>o.value);
+  if(name && price && share.length>0){
+    bill.items.push({name:name, price:price, sharedWith:share});
+    document.getElementById('itemName').value='';
+    document.getElementById('itemPrice').value='';
+  }
+}
+
+function showSummary(){
+  bill.restaurant = document.getElementById('restaurant').value;
+  bill.service = parseFloat(document.getElementById('service').value);
+  bill.sst = parseFloat(document.getElementById('sst').value);
+  bill.rounding = parseFloat(document.getElementById('rounding').value);
+  bill.treasurer = document.getElementById('treasurer').value || 'Bendahara';
+
+  let calculations = {};
+  bill.members.forEach(m=>{ calculations[m]={subtotal:0, service:0, sst:0, total:0} });
+
+  bill.items.forEach(it=>{
+    let splitPrice = it.price / it.sharedWith.length;
+    it.sharedWith.forEach(p=>{ calculations[p].subtotal += splitPrice; });
+  });
+
+  bill.members.forEach(m=>{
+    let sub = calculations[m].subtotal;
+    calculations[m].service = sub * (bill.service/100);
+    calculations[m].sst = (sub + calculations[m].service) * (bill.sst/100);
+    let total = sub + calculations[m].service + calculations[m].sst;
+    if(bill.rounding==0.5) total = Math.round(total*2)/2;
+    else if(bill.rounding==1) total = Math.round(total);
+    calculations[m].total = total;
+  });
+
+  let summaryHTML = `<h4>${bill.restaurant}</h4><p>Bendahara: ${bill.treasurer}</p><div class='summary'>`;
+  bill.members.forEach(m=>{
+    if(m!==bill.cashier) summaryHTML += `<p>${m} → RM${calculations[m].total.toFixed(2)} transfer ke ${bill.cashier}</p>`
+    else summaryHTML += `<p>${m} bayar sendiri: RM${calculations[m].total.toFixed(2)}</p>`
+  });
+  summaryHTML += `</div><button onclick='exportWhatsApp()'>📤 Export ke WhatsApp</button>`;
+  document.getElementById('billSummary').innerHTML = summaryHTML;
+  document.getElementById('billSummary').style.display='block';
+}
+
+function exportWhatsApp(){
+  let text = `MakanShare – ${bill.restaurant}\nTanggal: ${new Date().toLocaleDateString()}\n\n`;
+  bill.members.forEach(m=>{
+    if(m!==bill.cashier) text += `${m}: RM${bill.items.reduce((sum,it)=>it.sharedWith.includes(m)?sum+it.price/it.sharedWith.length:sum,0).toFixed(2)} → transfer ke ${bill.cashier}\n`;
+  });
+  alert('Copy this text to WhatsApp:\n\n' + text);
+}
+</script>
+</div>
+</body>
+</html>
